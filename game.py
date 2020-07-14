@@ -2,6 +2,7 @@
 
 import discord
 from scrutin import Scrutin
+from settings import Settings
 
 class Game:
     def __init__(self, game_name):
@@ -13,6 +14,7 @@ class Game:
         self.scrutinwolf = None
         self.night = False
         self.deaths_this_night = []
+        self.settings = Settings()
 
     async def launch_night(self):
         self.night = True
@@ -20,8 +22,10 @@ class Game:
         for role in self.roles:
             self.turns_played[role] = False
         #les villageois n'ont rien a faire
+        for role in self.roles:
+            self.turns_played[role] = False
         self.turns_played['VILLAGER'] = True
-        self.turns_played['WEREWOLF'] = False
+
 
     def check_end_night(self):
         """VErifie si la nuit est finie, si oui détruit le dictionnaire turns_played. A appeler à l'issue de chaque commande de role de nuit, et si True est renvoyé on appelle launch_day"""

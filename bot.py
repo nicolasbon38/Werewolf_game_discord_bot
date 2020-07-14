@@ -14,7 +14,7 @@ from utils import roles_enumeration, name_of_the_members, players_that_are_alive
 from scrutin import Scrutin, ScrutinWolf
 
 
-SUPPORTED_ROLES = ['VILLAGER', 'WEREWOLF']
+SUPPORTED_ROLES = ['VILLAGER', 'WEREWOLF', 'SEER']
 
 
 load_dotenv()
@@ -42,6 +42,12 @@ async def on_command_error(ctx, error):
 # async def permission_command_error(ctx, error):
 #     if isinstance(error, commands.errors.)
 
+# """Test pour passer une commande en DM"""
+# @bot.command(name='test')
+# async def test(ctx):
+#     await ctx.message.author.send("""J'ai compris que tu me parles""")
+#     await ctx.send(ctx.message.channel.name)
+
 
 """Commande permettant de créer une instance de GAME globale, et de setup les salons, etc"""
 @bot.command(name='newgame')
@@ -61,6 +67,8 @@ async def create_game(ctx, *args):
     await channel_join.send("""Welcome on the Join Channel. Type `!join` to join the game, `!quit` to quit the game.""")
     channel_setup_role = await guild.create_text_channel('setup roles', category=category)
     await channel_setup_role.send("""Ecrire un texte""")
+    channel_settings = await guild.create_text_channel('settings', category=category)
+    await channel_settings.send("""Ecrire in texte ici""")
     print('Creating the admin role')
     role_admin = await guild.create_role(name='Admin ' + game_name)
     await ctx.message.author.add_roles(role_admin)
@@ -123,6 +131,7 @@ async def addrole(ctx, *args):
 async def removerole(ctx, *args):
     if not(args):
         await ctx.send("""Vous n'avez spécifié aucun rôle à supprimer""")
+        return
     if ctx.channel.name == 'setup-roles':
         for role in args:
             if role in SUPPORTED_ROLES:
@@ -135,9 +144,21 @@ async def removerole(ctx, *args):
         await ctx.send('To remove a role from this game, you have to type this command in the channel *setup-roles*')
 
 
+"""Commande permettant de setup la durée du timer de vote du village"""
+@bot.command(name='setuptimer')
+async def setuptimer(ctx, arg):
+    if not(arg):
+        await ctx.send("""Vus n'avez pas spécifié de duréee""")
+        return
+    if ctx.channel.name == 'settings':
+        GAME.settings.timer_duration = int(arg)
+        await ctx.send("""The duration of the voting timer is now of {} seconds.""".format(arg))
+    else:
+        await ctx.send('The settings have to be modified in the settings channel')
 
 
-"""Commande permettant de lancer la game (admin uniquement). Le bot vérifie qu'il y a le même nombre de joueurs que de rôles, attribue un rôle à chaque joueur, supprimme les channels inutiles"""
+
+"""Commande permettant de lancer la game (admin uniquement). Le bot vérifie qu'il y a le même nombre de joueurs que de rôles, attribue un rôle à chaque joueur, supprime les channels inutiles"""
 @bot.command(name='start')
 async def start(ctx):
     if not("Admin " + GAME.name in [x.name for x in ctx.author.roles]):
@@ -267,14 +288,14 @@ async def slay(ctx):
         print("Ce mec est con")
 
 
-"""Fonctions qui résout la nuit, lance la procédure de vote, avec le timer en arrière-plan"""
+"""Fonction qui résout la nuit, lance la procédure de vote, avec le timer en arrière-plan"""
 async def launch_day(ctx):
     await discord.utils.get(ctx.guild.channels, name="place-publique", category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""Le jour se lève.""")
     GAME.night = False
     for victim in GAME.deaths_this_night:
         await victim.kill(ctx, GAME)
     if not(await check_win(ctx)):
-        final_time = datetime.now() + timedelta(seconds=30)
+        final_time = datetime.now() + timedelta(seconds=GAME.settings.timer_duration)
         await discord.utils.get(ctx.guild.channels, name="place-publique", category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""Les votes sont ouverts""")
         check_time.start(ctx=ctx, final_time=final_time)
     else:
@@ -321,6 +342,39 @@ async def check_win(ctx):
         await discord.utils.get(ctx.guild.channels, name='place-publique', category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""TOUT LE MONDE EST MORT !""")
         return True
     return False
+
+
+###########################################COMMANDES DE RÔLES##############################################
+
+#########VOYANTE###########
+@bot.command(name='seer')
+async def seer(ctx, arg):
+    if get_player_from_discord_user(GAME, ctx.message.author).role == 'SEER':
+        if ctx.message.channel.type == discord.DMChannel:
+            if not(arg):
+                await ctx.send("""Please specify a player to watch""")
+                return
+            user = discord.utils.get(ctx.guild.members, name=arg)
+            if user is None:
+                await ctx.send("""You must target a valid player. Please check your spelling.""")
+                return
+            if not(GAME.night):
+                await ctx.send("""You can only use your power at night.""")
+                return
+            if GAME.turns_played['SEER']:
+                await ctx.send("""You can only use your power once a night.""")
+                return
+            ctx.send("""In your crystal ball, you see that {} is {} !""".format(arg, get_player_from_discord_user(GAME, user).role))
+            GAME.turns_played['SEER'] = True
+            if GAME.check_end_night():
+                await launch_day(ctx)
+        else:
+            #if the player type the command in a public channel of the server, the bot deletes the message and sends him a warning in DM
+            await ctx.message.delete()
+            await send_dm(ctx, ctx.message.author, """You must use your power in DM, not in the public channels !""")
+    else:
+        await ctx.send("""Only the seer can use this power""")
+
    
 
 bot.run(TOKEN)
