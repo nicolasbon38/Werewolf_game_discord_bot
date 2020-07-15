@@ -15,7 +15,7 @@ from scrutin import Scrutin, ScrutinWolf
 from state_witch import State_witch
 
 
-SUPPORTED_ROLES = ['VILLAGER', 'WEREWOLF', 'SEER', 'WITCH']
+SUPPORTED_ROLES = ['VILLAGER', 'WEREWOLF', 'SEER', 'WITCH', 'HUNTER']
 
 
 load_dotenv()
@@ -157,7 +157,7 @@ async def removerole(ctx, *args):
         await ctx.send('To remove a role from this game, you have to type this command in the channel *setup-roles*')
 
 
-"""Commande permettant de setup la durée du timer de vote du village"""
+"""Commande permettant de set up la durée du timer de vote du village"""
 @bot.command(name='setuptimer')
 async def setuptimer(ctx, arg):
     if not(arg):
@@ -187,11 +187,12 @@ async def start(ctx):
         copy_roles.remove(player.role)
         print(player.name, player.role)
         #On envoie les rôles en DM aux joueurs
-        await send_dm(ctx, player.user, "You are {} !".format(player.role))
-        #On met le marqueur de potion à la sorcière
+        await send_dm(player.user, "You are {} !".format(player.role))
+        #On met le marqueur de potion à la sorcière, et le marquerur du chasseur
         if player.role == 'WITCH':
             player.state_witch = State_witch()
-
+        elif player.role == 'HUNTER':
+            player.state_hunter = False
     #On crée tous les salons
     guild = ctx.guild
     category = discord.utils.get(guild.categories,id=ctx.message.channel.category_id)
@@ -303,11 +304,12 @@ async def slay(ctx):
             except:
                 witch = None
             if witch:
-                await send_dm(ctx, witch.user, """{} has been slayed by the werewolves tonight.""".format(victim.name))
+                await send_dm(witch.user, """{} has been slayed by the werewolves tonight.""".format(victim.name))
         await ctx.channel.send("You have chosen to slay {} this night.".format(victim.name))
         GAME.deaths_this_night.append(victim)
         GAME.turns_played['WEREWOLF'] = True
         if GAME.check_end_night():
+            print("bloqué ? :", GAME.game_blocked)
             await launch_day()
     else:
         print("Ce mec est con")
@@ -316,11 +318,14 @@ async def slay(ctx):
 """Fonction qui résout la nuit, lance la procédure de vote, avec le timer en arrière-plan"""
 async def launch_day():
     await discord.utils.get(GAME.guild.channels, name="place-publique", category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Le jour se lève.""") # ici on utilise GAME.guild et non pas ctx.guild car le ctx est celui du DMChannel dans les cas où le dernier à jouer n'est pas loup-garou
-    GAME.night = False
     if len(GAME.deaths_this_night) == 0:
         await discord.utils.get(GAME.guild.channels, name='place-publique', category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Nobody died this night.""")
     for victim in GAME.deaths_this_night:
         await victim.kill(GAME)
+    GAME.deaths_this_night = []
+    if GAME.game_blocked:
+        return
+    GAME.night = False
     if not(await check_win()):
         final_time = datetime.now() + timedelta(seconds=GAME.settings.timer_duration)
         await discord.utils.get(GAME.guild.channels, name="place-publique", category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Les votes sont ouverts""")
@@ -338,7 +343,6 @@ async def check_time(final_time):
         await mort.kill(GAME)
         print(GAME.scrutin.votes, GAME.scrutin.suffrages)
         GAME.scrutin = None
-        GAME.night = True
         await discord.utils.get(GAME.guild.channels, name='place-publique', category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""It's the Night""")
         if await check_win():
             check_time.cancel()
@@ -354,6 +358,7 @@ async def check_time(final_time):
 async def after_check_time():
     print("j'ai pris le relais !")
     if not(check_time.is_being_cancelled()): #si il est cancel, c'est que la partie est finie
+        GAME.night = True
         await GAME.launch_night()
 
 
@@ -420,7 +425,7 @@ async def kill(ctx, arg):
     if await check_permissions_to_use_power(ctx, GAME, 'WITCH'):
         user_to_kill = discord.utils.get(GAME.guild.members, name=arg)
         if user_to_kill is None:
-            await ctx.Send("You must target a valid player. Please check your spelling.")
+            await ctx.send("You must target a valid player. Please check your spelling.")
             return
         if get_player_from_discord_user(GAME, ctx.message.author).state_witch.death_potion == False:
             await ctx.send("""You have already use your life potion.""")
@@ -447,6 +452,35 @@ async def do_nothing(ctx):
         GAME.turns_played['WITCH']= True
         await ctx.send("""You have chosen to do nothing this night.""")
         if GAME.check_end_night():
+            await launch_day()
+
+
+###########CHASSEUR#############
+
+
+"""Commande permettant au chasseur de tuer un autre joueur à sa mort"""
+@bot.command(name='shoot')
+async def shoot(ctx, arg):
+    if get_player_from_discord_user(GAME, ctx.message.author).role != 'HUNTER':
+        await ctx.send("""Only the HUNTER can use this power""")
+        return
+    if get_player_from_discord_user(GAME, ctx.message.author).state_hunter == False:    #SI LE POUVOIR N'A PAS DÉJÀ ÉTÉ UTILISÉ
+        victim = get_player_from_discord_user(GAME, discord.utils.get(GAME.guild.members, name=arg))
+        if not(victim):
+            await ctx.send("""Unknown player : {}. Please check your spelling""".format(arg))
+            return
+        if victim not in players_that_are_alive(GAME):
+            await ctx.send("""You cannot killed an already dead player.""")
+            return
+        await victim.kill(GAME)
+        get_player_from_discord_user(GAME, discord.utils.get(GAME.guild.members, name=arg)).state_hunter = True
+        GAME.game_blocked = False
+        get_player_from_discord_user(GAME, ctx.message.author).alive = False
+        if not(GAME.night):
+            GAME.night = True
+            await GAME.launch_night()
+        else:
+            GAME.night = False
             await launch_day()
 
 

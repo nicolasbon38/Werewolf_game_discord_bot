@@ -16,13 +16,17 @@ class Game:
         self.night = False
         self.deaths_this_night = []
         self.settings = Settings()
+        self.game_blocked = False       #booleen permettant de bloquer la game quand une action doit être résolue (typiquement le chasseur)
 
     async def launch_night(self):
+        if self.game_blocked:
+            return
         self.night = True
         self.turns_played = {}
         self.deaths_this_night = []
         for role in self.roles:
-            self.turns_played[role] = False
+            if role not in ['HUNTER']:  #ici mettre les rôles qui ne se réveillent pas
+                self.turns_played[role] = False
         #les villageois n'ont rien a faire
         self.turns_played['VILLAGER'] = True
 
@@ -35,6 +39,8 @@ class Game:
             if not(False in [self.turns_played[x] for x in self.turns_played]):
                 print('nuit finie !')
                 self.turns_played = None
+                if 'HUNTER' in [x.role for x in self.deaths_this_night]:
+                    self.game_blocked = True
                 return True
             print('nuit pas finie !')
             return False

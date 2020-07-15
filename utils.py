@@ -33,7 +33,7 @@ def get_player_from_discord_user(GAME, discord_user):
             return player
     return None
 
-async def send_dm(ctx, member, content):
+async def send_dm(member, content):
     channel = await member.create_dm()
     await channel.send(content)
 
