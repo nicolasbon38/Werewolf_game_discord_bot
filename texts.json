@@ -1,0 +1,14 @@
+{
+    "creation_partie_impossible":"Création de partie impossible :  vous devez spécifier un nom de partie",
+    "intro_admin_channel":"Bienvenue sur le channel administrateur. Tapez `!help` pour avoir une liste de commande administrateur",
+    "intro_setup-roles":"Ce channel sert à définir la composition des rôles. Vous pouvez ajouter un rôle à la partie en tapant `!addrole <nom du rôle 1><nom du rôle 2>...`, et en retirer un en tapant `!removerole <nom du rôle>`. Les rôles actuellement disponibles sont : VILLAGER, WEREWOLF, WITCH, SEER, HUNTER",
+    "intro_settings":"Ce channel permet de modifier les options de la partie. Vous pouvez envoyer `!help` pour vor la liste des paramètres disponibles",
+    "intro_loups_garous":"Bienvenue sur le channel des loups-garous. Ici vous pouvez débattre à l'abri des regards des villageois. Chaque nuit, vous votez pour décider quel joueur vous allez dévorer. Vous pouvez me donner votre vote en tapant `!votewolf <nom du joueur>`. Vous pouvez changer votre vote simplement en retapant la commande avec le nouveau nom. Lorsque le débat est fini, vous pouvez dévorer la victime choisie en tapant `!slay`. Cela mettra fin à votre tour.",
+    "intro_place_publique":"Bienvenue sur la place publique. Ici vous pouvez débattre librement de vos soupçons. C'est également ici que vous votez. POur me faire parvenir votre vote, tapez `!vote <nom du joueur ciblé`. Vous pouvez changer votre vote à tout moment : il suffit de retaper la commande avec le nouveau nom.",
+    "début de partie":"LA PARTIE COMMENCE <insérer un texte d'ambiance>",
+    "intro_VILLAGER":"Vous êtes Villageois. Vous n'avez pas de pouvoir spécial, vous ne pouvez compter que sur votre perspicacité pour éliminer les loup-garous. Bonne chance !",
+    "intro_WEREWOLF":"Vous êtes Loup-garou. Vous pouvez communiquer avec vos semblables dans le channel secret prévu à cet effet. Bonne chance !",
+    "intro_SEER":"Vous êtes la Voyante. Chaque nuit, vous pouvez découvrir le rôle d'un joueur en m'envoyant en privé `!seer <nom du joueur ciblé`. Bonne chance !",
+    "intro_WITCH":"Vous êtes la Sorcière. Vous disposez d'une potion de vie et d'une potion de mort. Chaque nuit, lorsque les loup-garous auront choisi leur victime, je vous enverrai son nom en privé. Vous pourrez alors la sauver en m'envoyant `!save <nom du joueur>`. Vous pouvez également tuer un joueur en m'envoyant `!kill `nom du joueur`. Vous pouvez également décider de ne rien faire en envoyant `!do_nothing`. Attention : vous ne pouvez utiliser qu'une seule potion par nuit, et chaque potion ne peut être utilisée qu'une seule fois par partie. Bonne chance !",
+    "intro_HUNTER":"Vous êtes le Chasseur. Lorsque vous mourrez, vous devrez emmener quelqu'un avec vous dans la tombe, en m'envoyant en privé `!shoot <nom du joueur>`. Vous recevrez un signal uquand cette commande sera disponible. Bonne chance !"
+}

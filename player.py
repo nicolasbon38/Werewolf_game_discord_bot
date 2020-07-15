@@ -23,4 +23,5 @@ class Player:
             await discord.utils.get(GAME.guild.channels, name='place-publique', category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""The Hunter have to send me in private the name of the person he wants to kill""")
             await send_dm(self.user, """You died. You have to shoot a player with `!shoot <name>.""")
             GAME.game_blocked = True
+            self.state_hunter = False #pour montrer qu'il n'a pas encore utilisé son pouvoir, et qu'il a le droit de le faire
             self.alive = True #pour qu'il puisse lancer sa commande, il mourra à ce moment là

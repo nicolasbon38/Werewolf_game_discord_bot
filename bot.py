@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from random import choice
 from datetime import datetime, timedelta
+from json import load
 
 from discord.ext import commands, tasks
 import discord.utils
@@ -19,6 +20,9 @@ SUPPORTED_ROLES = ['VILLAGER', 'WEREWOLF', 'SEER', 'WITCH', 'HUNTER']
 
 
 load_dotenv()
+f = open("texts.json")
+textes = load(f)
+f.close()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 bot = commands.Bot(command_prefix='!')
@@ -55,7 +59,7 @@ async def on_command_error(ctx, error):
 async def create_game(ctx, *args):
     #arg is the name of the channel specified by the user
     if not(args):
-        await ctx.send('Création de partie impossible : Vous devez spécifier le nom de votre partie')
+        await ctx.send(textes["creation_partie_impossible"])
     game_name = ' '.join(args)
     global GAME
     GAME = Game(ctx, game_name)
@@ -63,13 +67,13 @@ async def create_game(ctx, *args):
     print('Creating channels for the new game')
     category = await guild.create_category(game_name)
     channel_admin = await guild.create_text_channel('Admin', category=category)
-    await channel_admin.send("""Welcome on the Admin Channel. Type `!help` to have a list of commands""")
+    await channel_admin.send(textes["intro_admin_channel"])
     channel_join = await guild.create_text_channel('join', category=category)
     await channel_join.send("""Welcome on the Join Channel. Type `!join` to join the game, `!quit` to quit the game.""")
     channel_setup_role = await guild.create_text_channel('setup roles', category=category)
-    await channel_setup_role.send("""Ecrire un texte""")
+    await channel_setup_role.send(textes["intro_setup-roles"])
     channel_settings = await guild.create_text_channel('settings', category=category)
-    await channel_settings.send("""Ecrire in texte ici""")
+    await channel_settings.send(textes["intro_settings"])
     print('Creating the admin role')
     role_admin = await guild.create_role(name='Admin ' + game_name)
     await ctx.message.author.add_roles(role_admin)
@@ -187,7 +191,7 @@ async def start(ctx):
         copy_roles.remove(player.role)
         print(player.name, player.role)
         #On envoie les rôles en DM aux joueurs
-        await send_dm(player.user, "You are {} !".format(player.role))
+        await send_dm(player.user, textes["intro_" + player.role])
         #On met le marqueur de potion à la sorcière, et le marquerur du chasseur
         if player.role == 'WITCH':
             player.state_witch = State_witch()
@@ -207,11 +211,12 @@ async def start(ctx):
         if player.role != 'WEREWOLF':
             await channel_lg.set_permissions(player.user, overwrite=discord.PermissionOverwrite(read_messages=False))
         await channel_morts.set_permissions(player.user, overwrite=discord.PermissionOverwrite(read_messages=False))
-    await channel_lg.send("Welcome on the Werewolfs' channel")
+    await channel_lg.send(textes["intro_loups_garous"])
     GAME.started = True
-    await channel_place_publique.send("""THE GAME BEGINS""")
+    await channel_place_publique.send(textes["intro_place_publique"])
+    await channel_place_publique.send(textes["début de partie"])
     GAME.night = True
-    await discord.utils.get(ctx.guild.channels, name='place-publique', category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""It's the Night""")
+    await discord.utils.get(ctx.guild.channels, name='place-publique', category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""La nuit tombe.""")
     await GAME.launch_night()
 
 
@@ -464,13 +469,16 @@ async def shoot(ctx, arg):
     if get_player_from_discord_user(GAME, ctx.message.author).role != 'HUNTER':
         await ctx.send("""Only the HUNTER can use this power""")
         return
+    if get_player_from_discord_user(GAME, ctx.message.author).state_hunter is None:
+        await ctx.send("""You must be killed to use your power""")
+        return
     if get_player_from_discord_user(GAME, ctx.message.author).state_hunter == False:    #SI LE POUVOIR N'A PAS DÉJÀ ÉTÉ UTILISÉ
         victim = get_player_from_discord_user(GAME, discord.utils.get(GAME.guild.members, name=arg))
         if not(victim):
             await ctx.send("""Unknown player : {}. Please check your spelling""".format(arg))
             return
         if victim not in players_that_are_alive(GAME):
-            await ctx.send("""You cannot killed an already dead player.""")
+            await ctx.send("""You cannot kill an already dead player.""")
             return
         await victim.kill(GAME)
         get_player_from_discord_user(GAME, discord.utils.get(GAME.guild.members, name=arg)).state_hunter = True
