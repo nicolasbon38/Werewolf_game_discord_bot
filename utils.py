@@ -36,3 +36,29 @@ def get_player_from_discord_user(GAME, discord_user):
 async def send_dm(ctx, member, content):
     channel = await member.create_dm()
     await channel.send(content)
+
+def get_player_from_role(GAME, role, alive_select=True):
+    """renvoie une liste de players jouant le rôle passé en argument. Le booleen alive_select permet de choisr si on filtre les morts ou pas"""
+    to_return = []
+    for player in GAME.players:
+        if player.role == role:
+            if (alive_select and player.alive) or not(alive_select):
+                to_return.append(player)
+    return to_return
+
+
+async def check_permissions_to_use_power(ctx, GAME, role):
+    """A appeler au début de chaque commande de pouvoir de nuit. Vérifie si le joueur est bien celui qu'il prétend être, qu'il est vivant, qu'il n'a pas déjà joué et qu'on est bien la nuit."""
+    if get_player_from_discord_user(GAME, ctx.message.author).role != role:
+        await ctx.send("""Only the {} can use this power""".format(role))
+        return False
+    if get_player_from_discord_user(GAME, ctx.message.author).alive == False:
+        await ctx.send("""You have to be alive to use your power.""")
+        return False
+    if not(GAME.night):
+        await ctx.send("""You can use your power only at night.""")
+        return False
+    if GAME.turns_played[role]:
+        await ctx.send("""You can only use your power once a night""")
+        return False
+    return True

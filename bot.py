@@ -10,11 +10,12 @@ import discord.utils
 
 from game import Game
 from player import Player
-from utils import roles_enumeration, name_of_the_members, players_that_are_alive, players_that_are_wolves, players_that_are_not_wolves, get_player_from_discord_user, send_dm
+from utils import roles_enumeration, name_of_the_members, players_that_are_alive, players_that_are_wolves, players_that_are_not_wolves, get_player_from_discord_user, send_dm, get_player_from_role, check_permissions_to_use_power
 from scrutin import Scrutin, ScrutinWolf
+from state_witch import State_witch
 
 
-SUPPORTED_ROLES = ['VILLAGER', 'WEREWOLF', 'SEER']
+SUPPORTED_ROLES = ['VILLAGER', 'WEREWOLF', 'SEER', 'WITCH']
 
 
 load_dotenv()
@@ -57,7 +58,7 @@ async def create_game(ctx, *args):
         await ctx.send('Création de partie impossible : Vous devez spécifier le nom de votre partie')
     game_name = ' '.join(args)
     global GAME
-    GAME = Game(game_name)
+    GAME = Game(ctx, game_name)
     guild = ctx.guild
     print('Creating channels for the new game')
     category = await guild.create_category(game_name)
@@ -75,6 +76,18 @@ async def create_game(ctx, *args):
     print('Creating the player role')
     role_player = await guild.create_role(name='Player ' + game_name)
     await ctx.message.author.add_roles(role_player)
+
+
+"""Commande permettant de supprimer les salons d'une game"""
+@bot.command(name='deletegame')
+async def deletegame(ctx, arg):
+    category = discord.utils.get(ctx.guild.categories, name=arg)
+    if category:
+        for channel in category.channels:
+            await channel.delete()
+        await category.delete()
+    else:
+        await ctx.send("""Unknown game : {}. Maybe it is already finished ?""".format(arg))
 
 
 """Commande permettant à un utilisateur de rejoindre la partie dans le channel join"""
@@ -175,6 +188,9 @@ async def start(ctx):
         print(player.name, player.role)
         #On envoie les rôles en DM aux joueurs
         await send_dm(ctx, player.user, "You are {} !".format(player.role))
+        #On met le marqueur de potion à la sorcière
+        if player.role == 'WITCH':
+            player.state_witch = State_witch()
 
     #On crée tous les salons
     guild = ctx.guild
@@ -280,45 +296,56 @@ async def slay(ctx):
             return
         #On récupère la victime, et on la stocke:
         victim = get_player_from_discord_user(GAME, GAME.scrutinwolf.get_majority())
+        #On envoie l'info à la sorcière, si elle est vivante :
+        if 'WITCH' in GAME.roles:
+            try:
+                witch = get_player_from_role(GAME, 'WITCH', True)[0]
+            except:
+                witch = None
+            if witch:
+                await send_dm(ctx, witch.user, """{} has been slayed by the werewolves tonight.""".format(victim.name))
+        await ctx.channel.send("You have chosen to slay {} this night.".format(victim.name))
         GAME.deaths_this_night.append(victim)
         GAME.turns_played['WEREWOLF'] = True
         if GAME.check_end_night():
-            await launch_day(ctx)
+            await launch_day()
     else:
         print("Ce mec est con")
 
 
 """Fonction qui résout la nuit, lance la procédure de vote, avec le timer en arrière-plan"""
-async def launch_day(ctx):
-    await discord.utils.get(ctx.guild.channels, name="place-publique", category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""Le jour se lève.""")
+async def launch_day():
+    await discord.utils.get(GAME.guild.channels, name="place-publique", category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Le jour se lève.""") # ici on utilise GAME.guild et non pas ctx.guild car le ctx est celui du DMChannel dans les cas où le dernier à jouer n'est pas loup-garou
     GAME.night = False
+    if len(GAME.deaths_this_night) == 0:
+        await discord.utils.get(GAME.guild.channels, name='place-publique', category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Nobody died this night.""")
     for victim in GAME.deaths_this_night:
-        await victim.kill(ctx, GAME)
-    if not(await check_win(ctx)):
+        await victim.kill(GAME)
+    if not(await check_win()):
         final_time = datetime.now() + timedelta(seconds=GAME.settings.timer_duration)
-        await discord.utils.get(ctx.guild.channels, name="place-publique", category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""Les votes sont ouverts""")
-        check_time.start(ctx=ctx, final_time=final_time)
+        await discord.utils.get(GAME.guild.channels, name="place-publique", category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Les votes sont ouverts""")
+        check_time.start(final_time=final_time)
     else:
         return
 
 
 """Tasks gérant le timer des votes"""
 @tasks.loop(seconds=10, count=None)
-async def check_time(ctx, final_time):
+async def check_time(final_time):
     if datetime.now() > final_time:
-        await discord.utils.get(ctx.guild.channels, name="place-publique", category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""Temps écoulé ! Les votes sont clos""")
+        await discord.utils.get(GAME.guild.channels, name="place-publique", category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Temps écoulé ! Les votes sont clos""")
         mort = get_player_from_discord_user(GAME, GAME.scrutin.get_majority())
-        await mort.kill(ctx, GAME)
+        await mort.kill(GAME)
         print(GAME.scrutin.votes, GAME.scrutin.suffrages)
         GAME.scrutin = None
         GAME.night = True
-        await discord.utils.get(ctx.guild.channels, name='place-publique', category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""It's the Night""")
-        if await check_win(ctx):
+        await discord.utils.get(GAME.guild.channels, name='place-publique', category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""It's the Night""")
+        if await check_win():
             check_time.cancel()
             return
         check_time.stop()
     elif datetime.now() > final_time - timedelta(seconds=11):
-        await discord.utils.get(ctx.guild.channels, name="place-publique", category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""Il reste dix secondes.""")
+        await discord.utils.get(GAME.guild.channels, name="place-publique", category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Il reste dix secondes.""")
        
         
 
@@ -331,15 +358,15 @@ async def after_check_time():
 
 
 """FOnction qui promet d'être super compliquée et qui, appelée le matin et le soir, vérifie si la partie est finie"""
-async def check_win(ctx):
+async def check_win():
+    if len(players_that_are_alive(GAME)) == 0:
+        await discord.utils.get(GAME.guild.channels, name='place-publique', category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""TOUT LE MONDE EST MORT !""")
+        return True
     if len(players_that_are_wolves(GAME)) == 0:
-        await discord.utils.get(ctx.guild.channels, name='place-publique', category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""Tous les loups-Garous sont morts ! Les Villageois ont gagnés !""")
+        await discord.utils.get(GAME.guild.channels, name='place-publique', category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Tous les loups-Garous sont morts ! Les Villageois ont gagnés !""")
         return True
     if len(players_that_are_wolves(GAME)) > len(players_that_are_not_wolves(GAME)) and len(players_that_are_alive(GAME)) != 0:
-        await discord.utils.get(ctx.guild.channels, name='place-publique', category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""Les loups-garous sont en surnombre ! Les Villageois ont gagnés !""")
-        return True
-    if len(players_that_are_alive(GAME)) == 0:
-        await discord.utils.get(ctx.guild.channels, name='place-publique', category=discord.utils.get(ctx.guild.categories, name=GAME.name)).send("""TOUT LE MONDE EST MORT !""")
+        await discord.utils.get(GAME.guild.channels, name='place-publique', category=discord.utils.get(GAME.guild.categories, name=GAME.name)).send("""Les loups-garous sont en surnombre ! Les Villageois ont gagnés !""")
         return True
     return False
 
@@ -349,32 +376,78 @@ async def check_win(ctx):
 #########VOYANTE###########
 @bot.command(name='seer')
 async def seer(ctx, arg):
-    if get_player_from_discord_user(GAME, ctx.message.author).role == 'SEER':
-        if ctx.message.channel.type == discord.DMChannel:
-            if not(arg):
-                await ctx.send("""Please specify a player to watch""")
-                return
-            user = discord.utils.get(ctx.guild.members, name=arg)
-            if user is None:
-                await ctx.send("""You must target a valid player. Please check your spelling.""")
-                return
-            if not(GAME.night):
-                await ctx.send("""You can only use your power at night.""")
-                return
-            if GAME.turns_played['SEER']:
-                await ctx.send("""You can only use your power once a night.""")
-                return
-            ctx.send("""In your crystal ball, you see that {} is {} !""".format(arg, get_player_from_discord_user(GAME, user).role))
-            GAME.turns_played['SEER'] = True
-            if GAME.check_end_night():
-                await launch_day(ctx)
-        else:
-            #if the player type the command in a public channel of the server, the bot deletes the message and sends him a warning in DM
-            await ctx.message.delete()
-            await send_dm(ctx, ctx.message.author, """You must use your power in DM, not in the public channels !""")
-    else:
-        await ctx.send("""Only the seer can use this power""")
+    if not(arg):
+        await ctx.send("""Please specify a player to watch""")
+        return
+    if await check_permissions_to_use_power(ctx, GAME, 'SEER'):
+        user = discord.utils.get(GAME.guild.members, name=arg)
+        if user is None:
+            await ctx.send("""You must target a valid player. Please check your spelling.""")
+            return
+        await ctx.send("""In your crystal ball, you see that {} is {} !""".format(arg, get_player_from_discord_user(GAME, user).role))
+        GAME.turns_played['SEER'] = True
+        if GAME.check_end_night():
+            await launch_day()
 
-   
+#########################SORCIERE##############################
+
+
+"""Commande permettant à la sorcière de ressuciter la victime des loup-garous. Pour le moment elle peut en théorie sauver n'importe qui, mais chut"""
+@bot.command(name='save')
+async def save(ctx, arg):
+    if await check_permissions_to_use_power(ctx, GAME, 'WITCH'):
+        user_to_save = discord.utils.get(GAME.guild.members, name=arg)
+        if user_to_save is None:
+            await ctx.send("""You must target a valid player. Please check your spelling.""")
+            return
+        if get_player_from_discord_user(GAME, ctx.message.author).state_witch.life_potion == False:
+            await ctx.send("""You have already use your life potion.""")
+            return
+        #on enlève le miraculé de la liste des morts
+        GAME.deaths_this_night.remove(get_player_from_discord_user(GAME, user_to_save))
+        await ctx.send("""You have saved {} from the werewolves. You cannot use this power anymore.""".format(arg))
+        #on note que la potion a été utilisée
+        get_player_from_discord_user(GAME, ctx.message.author).state_witch.life_potion = False
+        #on note la fin de tour
+        GAME.turns_played['WITCH'] = True
+        if GAME.check_end_night():
+            await launch_day()
+
+
+"""Commande permettant à la sorcière de tuer quelqu'un"""
+@bot.command(name='kill')    
+async def kill(ctx, arg):
+    if await check_permissions_to_use_power(ctx, GAME, 'WITCH'):
+        user_to_kill = discord.utils.get(GAME.guild.members, name=arg)
+        if user_to_kill is None:
+            await ctx.Send("You must target a valid player. Please check your spelling.")
+            return
+        if get_player_from_discord_user(GAME, ctx.message.author).state_witch.death_potion == False:
+            await ctx.send("""You have already use your life potion.""")
+            return
+        #On doit vérifier si il est vivant
+        if not(get_player_from_discord_user(GAME, user_to_kill) in players_that_are_alive(GAME)):
+            await ctx.send("""You can't kill a dead person""")
+            return
+        GAME.deaths_this_night.append(get_player_from_discord_user(GAME, user_to_kill))
+        await ctx.send("""You have chosen to kill {} with your death potion""".format(user_to_kill.name))
+        #on note que la potion a été utilisée
+        get_player_from_discord_user(GAME, ctx.message.author).state_witch.death_potion = False
+        #on note la fin de tour
+        GAME.turns_played['WITCH'] = True
+        if GAME.check_end_night():
+            await launch_day()
+
+
+
+"""Commande permettant à la sorcière de passer son tour"""
+@bot.command(name='do-nothing')
+async def do_nothing(ctx):
+    if await check_permissions_to_use_power(ctx, GAME, 'WITCH'):
+        GAME.turns_played['WITCH']= True
+        await ctx.send("""You have chosen to do nothing this night.""")
+        if GAME.check_end_night():
+            await launch_day()
+
 
 bot.run(TOKEN)
